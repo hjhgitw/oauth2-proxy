@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/BurntSushi/toml"
-	options "github.com/mreiferson/go-options"
+	"github.com/oauth2-proxy/oauth2-proxy/pkg/apis/options"
 	"github.com/oauth2-proxy/oauth2-proxy/pkg/logger"
+	"github.com/spf13/pflag"
 )
 
 func main() {
@@ -146,7 +146,10 @@ func main() {
 	flagSet.String("pubjwk-url", "", "JWK pubkey access endpoint: required by login.gov")
 	flagSet.Bool("gcp-healthchecks", false, "Enable GCP/GKE healthcheck endpoints")
 
-	flagSet.Parse(os.Args[1:])
+	pflagSet := pflag.NewFlagSet("oauth2-proxy", pflag.ExitOnError)
+	pflagSet.AddGoFlagSet(flagSet)
+
+	pflagSet.Parse(os.Args[1:])
 
 	if *showVersion {
 		fmt.Printf("oauth2-proxy %s (built with %s)\n", VERSION, runtime.Version())
@@ -154,18 +157,13 @@ func main() {
 	}
 
 	opts := NewOptions()
-
-	cfg := make(EnvOptions)
-	if *config != "" {
-		_, err := toml.DecodeFile(*config, &cfg)
-		if err != nil {
-			logger.Fatalf("ERROR: failed to load config file %s - %s", *config, err)
-		}
+	err := options.Load(*config, pflagSet, opts)
+	if err != nil {
+		logger.Printf("%s", err)
+		os.Exit(1)
 	}
-	cfg.LoadEnvForStruct(opts)
-	options.Resolve(opts, flagSet, cfg)
 
-	err := opts.Validate()
+	err = opts.Validate()
 	if err != nil {
 		logger.Printf("%s", err)
 		os.Exit(1)
