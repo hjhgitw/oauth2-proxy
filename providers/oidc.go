@@ -3,7 +3,6 @@ package providers
 import (
 	"context"
 	"fmt"
-	"github.com/oauth2-proxy/oauth2-proxy/pkg/logger"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/oauth2-proxy/oauth2-proxy/pkg/apis/sessions"
+	"github.com/oauth2-proxy/oauth2-proxy/pkg/logger"
 	"github.com/oauth2-proxy/oauth2-proxy/pkg/requests"
 )
 
@@ -231,25 +231,26 @@ func (p *OIDCProvider) ValidateSessionState(s *sessions.SessionState) bool {
 		logger.Printf("Unable to extract claims: %s", s)
 		return false
 	}
-	if err := idToken.Claims(&claims.rawClaims); err != nil {
-		logger.Printf("Unable to extract claims: %s", s)
-		return false
-	}
-	userID := claims.rawClaims[p.UserIDClaim]
-	if userID == nil {
-		return false
+
+	// Only validate email if easy - don't do expensive operations (like profileURL lookup)
+	if err := idToken.Claims(&claims.rawClaims); err == nil {
+		userID := claims.rawClaims[p.UserIDClaim]
+		if userID == nil {
+			logger.Printf("IDToken claims did not contains the required user-id-claim '%s'", p.UserIDClaim)
+			return false
+		}
+		// If userID == '', might've resulted in profileURL lookup, so skip checking
+		if userID != "" && s.Email != "" && userID != s.Email {
+			logger.Printf("Potential session tampering! Email doesn't match IDToken claim: %s", s)
+			return false
+		}
 	}
 
-	// Don't do expensive profileURL check here if userID == ""
-	if userID != "" && userID != s.Email {
-		logger.Printf("Potential session tampering! Email doesn't match IDToken claim: %s", s)
-		return false
-	}
-	if claims.Subject != s.User {
+	if s.User != "" && claims.Subject != s.User {
 		logger.Printf("Potential session tampering! User doesn't match IDToken claim: %s", s)
 		return false
 	}
-	if claims.PreferredUsername != s.PreferredUsername {
+	if s.PreferredUsername != "" && claims.PreferredUsername != s.PreferredUsername {
 		logger.Printf("Potential session tampering! PreferredUsername doesn't match IDToken claim: %s", s)
 		return false
 	}
