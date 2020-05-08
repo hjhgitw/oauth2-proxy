@@ -68,6 +68,7 @@ type Options struct {
 	Session options.SessionOptions `cfg:",squash"`
 
 	Upstreams                     []string      `flag:"upstream" cfg:"upstreams" env:"OAUTH2_PROXY_UPSTREAMS"`
+	AlwaysValidateSession         bool          `flag:"always-validate-session" cfg:"always_validate_session" env:"OAUTH2_PROXY_ALWAYS_VALIDATE_SESSION"`
 	SkipAuthRegex                 []string      `flag:"skip-auth-regex" cfg:"skip_auth_regex" env:"OAUTH2_PROXY_SKIP_AUTH_REGEX"`
 	SkipJwtBearerTokens           bool          `flag:"skip-jwt-bearer-tokens" cfg:"skip_jwt_bearer_tokens" env:"OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS"`
 	ExtraJwtIssuers               []string      `flag:"extra-jwt-issuers" cfg:"extra_jwt_issuers" env:"OAUTH2_PROXY_EXTRA_JWT_ISSUERS"`
@@ -165,6 +166,7 @@ func NewOptions() *Options {
 		Session: options.SessionOptions{
 			Type: "cookie",
 		},
+		AlwaysValidateSession:            false,
 		SetXAuthRequest:                  false,
 		SkipAuthPreflight:                false,
 		PassBasicAuth:                    true,

@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"fmt"
+	"github.com/oauth2-proxy/oauth2-proxy/pkg/logger"
 	"net/http"
 	"strings"
 	"time"
@@ -216,11 +217,44 @@ func (p *OIDCProvider) createSessionStateInternal(rawIDToken string, idToken *oi
 	return newSession, nil
 }
 
-// ValidateSessionState checks that the session's IDToken is still valid
+// ValidateSessionState checks that the session's IDToken is still valid & its claims align with our Session
 func (p *OIDCProvider) ValidateSessionState(s *sessions.SessionState) bool {
 	ctx := context.Background()
-	_, err := p.Verifier.Verify(ctx, s.IDToken)
-	return err == nil
+	idToken, err := p.Verifier.Verify(ctx, s.IDToken)
+	if err != nil {
+		return false
+	}
+
+	// Ensure our Session hasn't been tampered with (ie stolen cookie secret) and still aligns with our IDToken claims
+	claims := &OIDCClaims{}
+	if err := idToken.Claims(&claims); err != nil {
+		logger.Printf("Unable to extract claims: %s", s)
+		return false
+	}
+	if err := idToken.Claims(&claims.rawClaims); err != nil {
+		logger.Printf("Unable to extract claims: %s", s)
+		return false
+	}
+	userID := claims.rawClaims[p.UserIDClaim]
+	if userID == nil {
+		return false
+	}
+
+	// Don't do expensive profileURL check here if userID == ""
+	if userID != "" && userID != s.Email {
+		logger.Printf("Potential session tampering! Email doesn't match IDToken claim: %s", s)
+		return false
+	}
+	if claims.Subject != s.User {
+		logger.Printf("Potential session tampering! User doesn't match IDToken claim: %s", s)
+		return false
+	}
+	if claims.PreferredUsername != s.PreferredUsername {
+		logger.Printf("Potential session tampering! PreferredUsername doesn't match IDToken claim: %s", s)
+		return false
+	}
+
+	return true
 }
 
 func getOIDCHeader(accessToken string) http.Header {
