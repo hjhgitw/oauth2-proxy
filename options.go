@@ -68,7 +68,7 @@ type Options struct {
 	Session options.SessionOptions `cfg:",squash"`
 
 	Upstreams                     []string      `flag:"upstream" cfg:"upstreams" env:"OAUTH2_PROXY_UPSTREAMS"`
-	AlwaysValidateSession         bool          `flag:"always-validate-session" cfg:"always_validate_session" env:"OAUTH2_PROXY_ALWAYS_VALIDATE_SESSION"`
+	StrictSessionValidation       bool          `flag:"strict-session-validation" cfg:"strict_session_validation" env:"OAUTH2_PROXY_STRICT_SESSION_VALIDATION"`
 	SkipAuthRegex                 []string      `flag:"skip-auth-regex" cfg:"skip_auth_regex" env:"OAUTH2_PROXY_SKIP_AUTH_REGEX"`
 	SkipJwtBearerTokens           bool          `flag:"skip-jwt-bearer-tokens" cfg:"skip_jwt_bearer_tokens" env:"OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS"`
 	ExtraJwtIssuers               []string      `flag:"extra-jwt-issuers" cfg:"extra_jwt_issuers" env:"OAUTH2_PROXY_EXTRA_JWT_ISSUERS"`
@@ -166,7 +166,7 @@ func NewOptions() *Options {
 		Session: options.SessionOptions{
 			Type: "cookie",
 		},
-		AlwaysValidateSession:            false,
+		StrictSessionValidation:          false,
 		SetXAuthRequest:                  false,
 		SkipAuthPreflight:                false,
 		PassBasicAuth:                    true,
@@ -381,7 +381,7 @@ func (o *Options) Validate() error {
 	msgs = parseProviderInfo(o, msgs)
 
 	var cipher *encryption.Cipher
-	if o.PassAccessToken || o.SetAuthorization || o.PassAuthorization || (o.Cookie.Refresh != time.Duration(0)) {
+	if o.StrictSessionValidation || o.PassAccessToken || o.SetAuthorization || o.PassAuthorization || (o.Cookie.Refresh != time.Duration(0)) {
 		validCookieSecretSize := false
 		for _, i := range []int{16, 24, 32} {
 			if len(secretBytes(o.Cookie.Secret)) == i {
