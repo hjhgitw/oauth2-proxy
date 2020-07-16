@@ -19,6 +19,7 @@ import (
 
 	"github.com/coreos/go-oidc"
 	"github.com/mbland/hmacauth"
+	"github.com/oauth2-proxy/oauth2-proxy/pkg/allowlist"
 	ipapi "github.com/oauth2-proxy/oauth2-proxy/pkg/apis/ip"
 	"github.com/oauth2-proxy/oauth2-proxy/pkg/apis/options"
 	sessionsapi "github.com/oauth2-proxy/oauth2-proxy/pkg/apis/sessions"
@@ -108,17 +109,14 @@ type OAuthProxy struct {
 	PassAccessToken         bool
 	SetAuthorization        bool
 	PassAuthorization       bool
+	SkipAuthStripHeaders    bool
 	PreferEmailToUser       bool
-	skipAuthRegex           []string
-	skipAuthPreflight       bool
-	skipAuthStripHeaders    bool
 	skipJwtBearerTokens     bool
 	mainJwtBearerVerifier   *oidc.IDTokenVerifier
 	extraJwtBearerVerifiers []*oidc.IDTokenVerifier
-	compiledRegex           []*regexp.Regexp
 	templates               *template.Template
 	realClientIPParser      ipapi.RealClientIPParser
-	trustedIPs              *ip.NetSet
+	allowlists              []allowlist.Allowlist
 	Banner                  string
 	Footer                  string
 }
@@ -282,8 +280,10 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 			panic(fmt.Sprintf("unknown upstream protocol %s", u.Scheme))
 		}
 	}
-	for _, u := range opts.GetCompiledRegex() {
-		logger.Printf("compiled skip-auth-regex => %q", u)
+	for _, allower := range opts.Allowlist.GetAllowlists() {
+		for _, msg := range allower.LogMessages() {
+			logger.Print(msg)
+		}
 	}
 
 	if opts.SkipJwtBearerTokens {
@@ -304,15 +304,6 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 	}
 
 	logger.Printf("Cookie settings: name:%s secure(https):%v httponly:%v expiry:%s domains:%s path:%s samesite:%s refresh:%s", opts.Cookie.Name, opts.Cookie.Secure, opts.Cookie.HTTPOnly, opts.Cookie.Expire, strings.Join(opts.Cookie.Domains, ","), opts.Cookie.Path, opts.Cookie.SameSite, refresh)
-
-	trustedIPs := ip.NewNetSet()
-	for _, ipStr := range opts.TrustedIPs {
-		if ipNet := ip.ParseIPNet(ipStr); ipNet != nil {
-			trustedIPs.AddIPNet(*ipNet)
-		} else {
-			return nil, fmt.Errorf("could not parse IP network (%s)", ipStr)
-		}
-	}
 
 	return &OAuthProxy{
 		CookieName:     opts.Cookie.Name,
@@ -342,13 +333,10 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 		serveMux:                serveMux,
 		redirectURL:             redirectURL,
 		whitelistDomains:        opts.WhitelistDomains,
-		skipAuthRegex:           opts.SkipAuthRegex,
-		skipAuthPreflight:       opts.SkipAuthPreflight,
-		skipAuthStripHeaders:    opts.SkipAuthStripHeaders,
+		allowlists:              opts.Allowlist.GetAllowlists(),
 		skipJwtBearerTokens:     opts.SkipJwtBearerTokens,
 		mainJwtBearerVerifier:   opts.GetOIDCVerifier(),
 		extraJwtBearerVerifiers: opts.GetJWTBearerVerifiers(),
-		compiledRegex:           opts.GetCompiledRegex(),
 		realClientIPParser:      opts.GetRealClientIPParser(),
 		SetXAuthRequest:         opts.SetXAuthRequest,
 		PassBasicAuth:           opts.PassBasicAuth,
@@ -358,10 +346,10 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 		PassAccessToken:         opts.PassAccessToken,
 		SetAuthorization:        opts.SetAuthorization,
 		PassAuthorization:       opts.PassAuthorization,
+		SkipAuthStripHeaders:    opts.Allowlist.SkipAuthStripHeaders,
 		PreferEmailToUser:       opts.PreferEmailToUser,
 		SkipProviderButton:      opts.SkipProviderButton,
 		templates:               loadTemplates(opts.CustomTemplatesDir),
-		trustedIPs:              trustedIPs,
 		Banner:                  opts.Banner,
 		Footer:                  opts.Footer,
 	}, nil
@@ -660,16 +648,11 @@ func (p *OAuthProxy) IsValidRedirect(redirect string) bool {
 	}
 }
 
-// IsWhitelistedRequest is used to check if auth should be skipped for this request
-func (p *OAuthProxy) IsWhitelistedRequest(req *http.Request) bool {
-	isPreflightRequestAllowed := p.skipAuthPreflight && req.Method == "OPTIONS"
-	return isPreflightRequestAllowed || p.IsWhitelistedPath(req.URL.Path) || p.IsTrustedIP(req)
-}
-
-// IsWhitelistedPath is used to check if the request path is allowed without auth
-func (p *OAuthProxy) IsWhitelistedPath(path string) bool {
-	for _, u := range p.compiledRegex {
-		if u.MatchString(path) {
+// IsTrustedRequest is used to check if auth should be skipped for this request
+// It will use the Route & IP based allowlists
+func (p *OAuthProxy) IsTrustedRequest(req *http.Request) bool {
+	for _, allower := range p.allowlists {
+		if allower.IsTrusted(req) {
 			return true
 		}
 	}
@@ -691,26 +674,6 @@ func prepareNoCache(w http.ResponseWriter) {
 	}
 }
 
-// IsTrustedIP is used to check if a request comes from a trusted client IP address.
-func (p *OAuthProxy) IsTrustedIP(req *http.Request) bool {
-	if p.trustedIPs == nil {
-		return false
-	}
-
-	remoteAddr, err := ip.GetClientIP(p.realClientIPParser, req)
-	if err != nil {
-		logger.Printf("Error obtaining real IP for trusted IP list: %v", err)
-		// Possibly spoofed X-Real-IP header
-		return false
-	}
-
-	if remoteAddr == nil {
-		return false
-	}
-
-	return p.trustedIPs.Has(remoteAddr)
-}
-
 func (p *OAuthProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if req.URL.Path != p.AuthOnlyPath && strings.HasPrefix(req.URL.Path, p.ProxyPrefix) {
 		prepareNoCache(rw)
@@ -719,7 +682,7 @@ func (p *OAuthProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	switch path := req.URL.Path; {
 	case path == p.RobotsPath:
 		p.RobotsTxt(rw)
-	case p.IsWhitelistedRequest(req):
+	case p.IsTrustedRequest(req):
 		p.SkipAuthProxy(rw, req)
 	case path == p.SignInPath:
 		p.SignIn(rw, req)
@@ -893,9 +856,9 @@ func (p *OAuthProxy) AuthenticateOnly(rw http.ResponseWriter, req *http.Request)
 	rw.WriteHeader(http.StatusAccepted)
 }
 
-// SkipAuthProxy proxies whitelisted requests and skips authentication
+// SkipAuthProxy proxies trusted requests and skips authentication
 func (p *OAuthProxy) SkipAuthProxy(rw http.ResponseWriter, req *http.Request) {
-	if p.skipAuthStripHeaders {
+	if p.SkipAuthStripHeaders {
 		p.stripAuthHeaders(req)
 	}
 	p.serveMux.ServeHTTP(rw, req)
