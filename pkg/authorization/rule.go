@@ -75,22 +75,23 @@ func (r *Rule) Hits() int {
 	return r.hits
 }
 
-// Allow checks if a request passes all field checks for an Allow policy
-func (r *Rule) Allow(req *http.Request, parser ipapi.RealClientIPParser) bool {
-	if r.Policy == Allow && r.checkPath(req) && r.checkMethods(req) && r.checkIPs(req, parser) {
+// Check checks if a request passes all field checks for a given policy
+func (r *Rule) Check(policy string, req *http.Request, parser ipapi.RealClientIPParser) bool {
+	if r.Policy == policy && r.checkPath(req) && r.checkMethods(req) && r.checkIPs(req, parser) {
 		r.hits++
 		return true
 	}
 	return false
 }
 
-// Allow checks if a request passes all field checks for a Deny policy
+// Allow is a convenience wrapper around Check for the Allow policy
+func (r *Rule) Allow(req *http.Request, parser ipapi.RealClientIPParser) bool {
+	return r.Check(Allow, req, parser)
+}
+
+// Deny is a convenience wrapper around Check for the Deny policy
 func (r *Rule) Deny(req *http.Request, parser ipapi.RealClientIPParser) bool {
-	if r.Policy == Deny && r.checkPath(req) && r.checkMethods(req) && r.checkIPs(req, parser) {
-		r.hits++
-		return true
-	}
-	return false
+	return r.Check(Deny, req, parser)
 }
 
 // buildPathRegex helps build the PathRegex from a raw path regex string

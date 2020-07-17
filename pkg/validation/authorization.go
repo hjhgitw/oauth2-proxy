@@ -92,7 +92,7 @@ func validatePreflight(o *options.Authorization, e *engine.RulesEngine) []string
 	msgs := []string{}
 	if o.SkipAuthPreflight {
 		rule, err := authorization.NewRule(
-			fmt.Sprintf("preflight"),
+			"preflight",
 			authorization.Allow,
 			"",
 			[]string{index.Options},
@@ -109,7 +109,7 @@ func validatePreflight(o *options.Authorization, e *engine.RulesEngine) []string
 // validateTrustedIPs validates IP/CIDRs for IP based allowlists
 func validateTrustedIPs(o *options.Authorization, e *engine.RulesEngine) []string {
 	rule, err := authorization.NewRule(
-		fmt.Sprintf("trustedIP"),
+		"trustedIP",
 		authorization.Allow,
 		"",
 		nil,

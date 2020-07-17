@@ -46,7 +46,7 @@ func (i *PathIndex) IndexRule(rule *authorization.Rule) bool {
 		start = 1
 	}
 	if rawRegex[end-1:] == "$" {
-		end = end - 1
+		end--
 	}
 	indexPath := rawRegex[start:end]
 	i.paths[indexPath] = append(i.paths[indexPath], rule)

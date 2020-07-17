@@ -64,14 +64,9 @@ func (i *IPsIndex) MatchRules(req *http.Request) []*authorization.Rule {
 		return nil
 	}
 
-	if remoteAddr == nil {
-		return nil
-	}
-
-	if i.trustedIPs.Has(remoteAddr) {
+	if remoteAddr != nil && i.trustedIPs.Has(remoteAddr) {
 		i.hits++
 		return i.Rules
-	} else {
-		return nil
 	}
+	return nil
 }

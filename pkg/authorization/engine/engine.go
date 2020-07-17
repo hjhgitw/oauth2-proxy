@@ -1,14 +1,16 @@
 package engine
 
 import (
-	"github.com/oauth2-proxy/oauth2-proxy/pkg/authorization"
 	"math/rand"
 	"net/http"
 
 	ipapi "github.com/oauth2-proxy/oauth2-proxy/pkg/apis/ip"
+	"github.com/oauth2-proxy/oauth2-proxy/pkg/authorization"
 	"github.com/oauth2-proxy/oauth2-proxy/pkg/authorization/index"
 )
 
+// RulesEngine manages authorization Rules and which requests
+// pass or fail authorization
 type RulesEngine struct {
 	Rules   []*authorization.Rule
 	Indices []index.Index
@@ -25,6 +27,8 @@ type RulesEngine struct {
 	ipParser ipapi.RealClientIPParser
 }
 
+// NewRulesEngine builds a RulesEngine. It initializes the index singletons
+// as well.
 func NewRulesEngine(ipParser ipapi.RealClientIPParser) *RulesEngine {
 	return &RulesEngine{
 		Rules:   []*authorization.Rule{},
@@ -40,6 +44,10 @@ func NewRulesEngine(ipParser ipapi.RealClientIPParser) *RulesEngine {
 	}
 }
 
+// AddRule adds a authorization Rule to our RulesEngine. Rules are
+// automatically added to the appropriate Index based on their content.
+// After a threshold, optimization mode is enabled and indexing is run
+// for all requests.
 func (e *RulesEngine) AddRule(rule *authorization.Rule) {
 	e.Rules = append(e.Rules, rule)
 
@@ -58,18 +66,14 @@ func (e *RulesEngine) AddRule(rule *authorization.Rule) {
 	}
 }
 
+// Allow checks if ANY Rules would allow the request
 func (e *RulesEngine) Allow(req *http.Request) bool {
-	allower := func(rule *authorization.Rule, r *http.Request) bool {
-		return rule.Allow(r, e.ipParser)
-	}
-	return e.check(req, allower)
+	return e.check(authorization.Allow, req)
 }
 
+// Deny checks if ANY Rules would deny the request
 func (e *RulesEngine) Deny(req *http.Request) bool {
-	denier := func(rule *authorization.Rule, r *http.Request) bool {
-		return rule.Deny(r, e.ipParser)
-	}
-	return e.check(req, denier)
+	return e.check(authorization.Deny, req)
 }
 
 // check compares a http.Request against our rules engine with a checker
@@ -79,14 +83,9 @@ func (e *RulesEngine) Deny(req *http.Request) bool {
 // Otherwise it will use the activated Indices. The indices and rules will
 // attempt greedy reordering to place more active Rules at the front of the
 // list.
-func (e *RulesEngine) check(req *http.Request, checker func(*authorization.Rule, *http.Request) bool) bool {
+func (e *RulesEngine) check(policy string, req *http.Request) bool {
 	if !e.optimize {
-		for _, rule := range e.Rules {
-			if checker(rule, req) {
-				return true
-			}
-		}
-		return false
+		return e.checkAll(policy, req)
 	}
 
 	// Occasionally reorder the indices to get high hit rate indices first
@@ -105,7 +104,7 @@ func (e *RulesEngine) check(req *http.Request, checker func(*authorization.Rule,
 			if _, ok := checked[rule.ID]; ok {
 				continue
 			}
-			if checker(rule, req) {
+			if rule.Check(policy, req, e.ipParser) {
 				prioritizeRule(indexRules, i)
 				return true
 			}
@@ -118,13 +117,24 @@ func (e *RulesEngine) check(req *http.Request, checker func(*authorization.Rule,
 		if _, ok := checked[rule.ID]; ok {
 			continue
 		}
-		if checker(rule, req) {
+		if rule.Check(policy, req, e.ipParser) {
 			// DO NOT prioritizeRules on the global list
 			// Avoids any rare concurrency issues
 			return true
 		}
 	}
 
+	return false
+}
+
+// checkAll checks all Rules in an O(N) scan fashion. This is intended for
+// small N (!optimized) scenarios.
+func (e *RulesEngine) checkAll(policy string, req *http.Request) bool {
+	for _, rule := range e.Rules {
+		if rule.Check(policy, req, e.ipParser) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -139,7 +149,7 @@ func (e *RulesEngine) activateIndex(idx index.Index) {
 	e.Indices = append(e.Indices, idx)
 }
 
-// sortIndices semi-sorts the Indices from high to low hit rates
+// prioritizeIndices semi-sorts the Indices from high to low hit rates
 // It is intentionally O(N) and not perfect, over time it will
 // sort itself well enough.
 //
