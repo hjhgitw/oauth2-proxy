@@ -58,10 +58,10 @@ type Options struct {
 	Banner                   string   `flag:"banner" cfg:"banner"`
 	Footer                   string   `flag:"footer" cfg:"footer"`
 
-	Allowlist Allowlist      `cfg:",squash"`
-	Cookie    Cookie         `cfg:",squash"`
-	Session   SessionOptions `cfg:",squash"`
-	Logging   Logging        `cfg:",squash"`
+	Authorization Authorization  `cfg:",squash"`
+	Cookie        Cookie         `cfg:",squash"`
+	Session       SessionOptions `cfg:",squash"`
+	Logging       Logging        `cfg:",squash"`
 
 	Upstreams                     []string      `flag:"upstream" cfg:"upstreams"`
 	SkipJwtBearerTokens           bool          `flag:"skip-jwt-bearer-tokens" cfg:"skip_jwt_bearer_tokens"`
@@ -148,7 +148,7 @@ func NewOptions() *Options {
 		RealClientIPHeader:               "X-Real-IP",
 		ForceHTTPS:                       false,
 		DisplayHtpasswdForm:              true,
-		Allowlist:                        allowlistDefaults(),
+		Authorization:                    authorizationDefaults(),
 		Cookie:                           cookieDefaults(),
 		Session:                          sessionOptionsDefaults(),
 		AzureTenant:                      "common",
@@ -266,7 +266,7 @@ func NewFlagSet() *pflag.FlagSet {
 
 	flagSet.String("user-id-claim", "email", "which claim contains the user ID")
 
-	flagSet.AddFlagSet(allowlistFlagSet())
+	flagSet.AddFlagSet(authorizationFlagSet())
 	flagSet.AddFlagSet(cookieFlagSet())
 	flagSet.AddFlagSet(loggingFlagSet())
 

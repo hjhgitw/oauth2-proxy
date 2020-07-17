@@ -829,7 +829,7 @@ func TestStripAuthHeaders(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			opts := baseTestOptions()
-			opts.Allowlist.SkipAuthStripHeaders = tc.SkipAuthStripHeaders
+			opts.Authorization.SkipAuthStripHeaders = tc.SkipAuthStripHeaders
 			opts.PassBasicAuth = tc.PassBasicAuth
 			opts.PassUserHeaders = tc.PassUserHeaders
 			opts.PassAccessToken = tc.PassAccessToken
@@ -871,7 +871,7 @@ func TestAuthSkippedForPreflightRequests(t *testing.T) {
 
 	opts := baseTestOptions()
 	opts.Upstreams = append(opts.Upstreams, upstream.URL)
-	opts.Allowlist.SkipAuthPreflight = true
+	opts.Authorization.SkipAuthPreflight = true
 	err := validation.Validate(opts)
 	assert.NoError(t, err)
 
@@ -1034,7 +1034,7 @@ func TestTrustedIPs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := baseTestOptions()
 			opts.Upstreams = []string{"static://200"}
-			opts.Allowlist.TrustedIPs = tt.trustedIPs
+			opts.Authorization.TrustedIPs = tt.trustedIPs
 			opts.ReverseProxy = tt.reverseProxy
 			opts.RealClientIPHeader = tt.realClientIPHeader
 			err := validation.Validate(opts)
@@ -2275,7 +2275,7 @@ func Test_noCacheHeaders(t *testing.T) {
 
 	opts := baseTestOptions()
 	opts.Upstreams = []string{upstream.URL}
-	opts.Allowlist.SkipAuthRegex = []string{".*"}
+	opts.Authorization.SkipAuthRegex = []string{".*"}
 	err := validation.Validate(opts)
 	assert.NoError(t, err)
 	proxy, err := NewOAuthProxy(opts, func(_ string) bool { return true })

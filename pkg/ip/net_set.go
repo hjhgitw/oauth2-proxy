@@ -18,6 +18,7 @@ import (
 type NetSet struct {
 	ip4NetMaps []ipNetMap
 	ip6NetMaps []ipNetMap
+	ipNets     []net.IPNet
 }
 
 // Create a new NetSet with all of the provided networks.
@@ -25,6 +26,7 @@ func NewNetSet() *NetSet {
 	return &NetSet{
 		ip4NetMaps: make([]ipNetMap, 0),
 		ip6NetMaps: make([]ipNetMap, 0),
+		ipNets:     make([]net.IPNet, 0),
 	}
 }
 
@@ -43,6 +45,7 @@ func (w *NetSet) Has(ip net.IP) bool {
 
 // Add an CIDR network to the set.
 func (w *NetSet) AddIPNet(ipNet net.IPNet) {
+	w.ipNets = append(w.ipNets, ipNet)
 	netMaps := w.getNetMaps(ipNet.IP)
 
 	// Determine the size / number of ones in the CIDR network mask.
@@ -72,6 +75,11 @@ func (w *NetSet) AddIPNet(ipNet net.IPNet) {
 
 	// Add the IP to the ipNetMap.
 	netMap.ips[ipNet.IP.String()] = true
+}
+
+// GetIPNets returns the IPNets used to build this NetSet
+func (w *NetSet) GetIPNets() []net.IPNet {
+	return w.ipNets
 }
 
 // Get the appropriate array of networks for the given IP version.

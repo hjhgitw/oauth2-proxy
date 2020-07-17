@@ -19,10 +19,10 @@ import (
 
 	"github.com/coreos/go-oidc"
 	"github.com/mbland/hmacauth"
-	"github.com/oauth2-proxy/oauth2-proxy/pkg/allowlist"
 	ipapi "github.com/oauth2-proxy/oauth2-proxy/pkg/apis/ip"
 	"github.com/oauth2-proxy/oauth2-proxy/pkg/apis/options"
 	sessionsapi "github.com/oauth2-proxy/oauth2-proxy/pkg/apis/sessions"
+	"github.com/oauth2-proxy/oauth2-proxy/pkg/authorization/engine"
 	"github.com/oauth2-proxy/oauth2-proxy/pkg/cookies"
 	"github.com/oauth2-proxy/oauth2-proxy/pkg/encryption"
 	"github.com/oauth2-proxy/oauth2-proxy/pkg/ip"
@@ -116,7 +116,7 @@ type OAuthProxy struct {
 	extraJwtBearerVerifiers []*oidc.IDTokenVerifier
 	templates               *template.Template
 	realClientIPParser      ipapi.RealClientIPParser
-	allowlists              []allowlist.Allowlist
+	rulesEngine             *engine.RulesEngine
 	Banner                  string
 	Footer                  string
 }
@@ -280,11 +280,6 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 			panic(fmt.Sprintf("unknown upstream protocol %s", u.Scheme))
 		}
 	}
-	for _, allower := range opts.Allowlist.GetAllowlists() {
-		for _, msg := range allower.LogMessages() {
-			logger.Print(msg)
-		}
-	}
 
 	if opts.SkipJwtBearerTokens {
 		logger.Printf("Skipping JWT tokens from configured OIDC issuer: %q", opts.OIDCIssuerURL)
@@ -333,7 +328,7 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 		serveMux:                serveMux,
 		redirectURL:             redirectURL,
 		whitelistDomains:        opts.WhitelistDomains,
-		allowlists:              opts.Allowlist.GetAllowlists(),
+		rulesEngine:             opts.Authorization.GetRulesEngine(),
 		skipJwtBearerTokens:     opts.SkipJwtBearerTokens,
 		mainJwtBearerVerifier:   opts.GetOIDCVerifier(),
 		extraJwtBearerVerifiers: opts.GetJWTBearerVerifiers(),
@@ -346,7 +341,7 @@ func NewOAuthProxy(opts *options.Options, validator func(string) bool) (*OAuthPr
 		PassAccessToken:         opts.PassAccessToken,
 		SetAuthorization:        opts.SetAuthorization,
 		PassAuthorization:       opts.PassAuthorization,
-		SkipAuthStripHeaders:    opts.Allowlist.SkipAuthStripHeaders,
+		SkipAuthStripHeaders:    opts.Authorization.SkipAuthStripHeaders,
 		PreferEmailToUser:       opts.PreferEmailToUser,
 		SkipProviderButton:      opts.SkipProviderButton,
 		templates:               loadTemplates(opts.CustomTemplatesDir),
@@ -648,17 +643,6 @@ func (p *OAuthProxy) IsValidRedirect(redirect string) bool {
 	}
 }
 
-// IsTrustedRequest is used to check if auth should be skipped for this request
-// It will use the Route & IP based allowlists
-func (p *OAuthProxy) IsTrustedRequest(req *http.Request) bool {
-	for _, allower := range p.allowlists {
-		if allower.IsTrusted(req) {
-			return true
-		}
-	}
-	return false
-}
-
 // See https://developers.google.com/web/fundamentals/performance/optimizing-content-efficiency/http-caching?hl=en
 var noCacheHeaders = map[string]string{
 	"Expires":         time.Unix(0, 0).Format(time.RFC1123),
@@ -682,7 +666,7 @@ func (p *OAuthProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	switch path := req.URL.Path; {
 	case path == p.RobotsPath:
 		p.RobotsTxt(rw)
-	case p.IsTrustedRequest(req):
+	case p.rulesEngine.Allow(req):
 		p.SkipAuthProxy(rw, req)
 	case path == p.SignInPath:
 		p.SignIn(rw, req)

@@ -6,14 +6,14 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/oauth2-proxy/oauth2-proxy/pkg/allowlist"
 	"github.com/oauth2-proxy/oauth2-proxy/pkg/apis/options"
+	"github.com/oauth2-proxy/oauth2-proxy/pkg/authorization/engine"
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_validateAllowlist(t *testing.T) {
+func Test_validateAuthorization(t *testing.T) {
 	opts := &options.Options{
-		Allowlist: options.Allowlist{
+		Authorization: options.Authorization{
 			SkipAuthRoutes: []string{
 				"POST=/foo/bar",
 				"PUT=^/foo/bar$",
@@ -26,17 +26,9 @@ func Test_validateAllowlist(t *testing.T) {
 			},
 		},
 	}
-	assert.Equal(t, []string{}, validateAllowlist(opts))
+	assert.Equal(t, []string{}, validateAuthorization(opts))
 
-	isTrusted := func(req *http.Request) bool {
-		for _, allower := range opts.Allowlist.GetAllowlists() {
-			if allower.IsTrusted(req) {
-				return true
-			}
-		}
-		return false
-	}
-
+	re := opts.Authorization.GetRulesEngine()
 	// Trusted via SkipAuthRoutes
 	routeReq := &http.Request{
 		Method: "POST",
@@ -45,7 +37,7 @@ func Test_validateAllowlist(t *testing.T) {
 		},
 		RemoteAddr: "1.2.3.4:443",
 	}
-	assert.True(t, isTrusted(routeReq))
+	assert.True(t, re.Allow(routeReq))
 
 	// Trusted via SkipAuthRegex
 	regexReq := &http.Request{
@@ -55,7 +47,7 @@ func Test_validateAllowlist(t *testing.T) {
 		},
 		RemoteAddr: "1.2.3.4:443",
 	}
-	assert.True(t, isTrusted(regexReq))
+	assert.True(t, re.Allow(regexReq))
 
 	// Trusted via SkipAuthPreflight
 	preflightReq := &http.Request{
@@ -65,7 +57,7 @@ func Test_validateAllowlist(t *testing.T) {
 		},
 		RemoteAddr: "1.2.3.4:443",
 	}
-	assert.True(t, isTrusted(preflightReq))
+	assert.True(t, re.Allow(preflightReq))
 
 	// Trusted via TrustedIPs
 	ipReq := &http.Request{
@@ -75,7 +67,7 @@ func Test_validateAllowlist(t *testing.T) {
 		},
 		RemoteAddr: "10.32.0.1:443",
 	}
-	assert.True(t, isTrusted(ipReq))
+	assert.True(t, re.Allow(ipReq))
 
 	// Not trusted
 	authReq := &http.Request{
@@ -85,7 +77,7 @@ func Test_validateAllowlist(t *testing.T) {
 		},
 		RemoteAddr: "1.2.3.4:443",
 	}
-	assert.False(t, isTrusted(authReq))
+	assert.False(t, re.Allow(authReq))
 }
 
 func Test_validateRoutes(t *testing.T) {
@@ -130,13 +122,13 @@ func Test_validateRoutes(t *testing.T) {
 
 	for testName, tc := range testCases {
 		t.Run(testName, func(t *testing.T) {
-			routes := allowlist.NewRoutes()
-			opts := &options.Allowlist{
+			re := engine.NewRulesEngine(nil)
+			opts := &options.Authorization{
 				SkipAuthRoutes: tc.Regexes,
 			}
-			msgs := validateRoutes(opts, routes)
+			msgs := validateRoutes(opts, re)
 			assert.Equal(t, tc.Expected, msgs)
-			// Confirm validator populated the allowlist.Routes
+			// Confirm validator populated the authorization.Routes
 			if len(msgs) == 0 {
 				req := &http.Request{
 					Method: "GET",
@@ -144,9 +136,9 @@ func Test_validateRoutes(t *testing.T) {
 						Path: "/foo",
 					},
 				}
-				assert.True(t, routes.IsTrusted(req))
+				assert.True(t, re.Allow(req))
 				req.URL.Path = "/wrong"
-				assert.False(t, routes.IsTrusted(req))
+				assert.False(t, re.Allow(req))
 			}
 		})
 	}
@@ -194,22 +186,22 @@ func Test_validateRegexes(t *testing.T) {
 
 	for testName, tc := range testCases {
 		t.Run(testName, func(t *testing.T) {
-			routes := allowlist.NewRoutes()
-			opts := &options.Allowlist{
+			re := engine.NewRulesEngine(nil)
+			opts := &options.Authorization{
 				SkipAuthRegex: tc.Regexes,
 			}
-			msgs := validateRegexes(opts, routes)
+			msgs := validateRegexes(opts, re)
 			assert.Equal(t, tc.Expected, msgs)
-			// Confirm validator populated the allowlist.Routes
+			// Confirm validator populated the authorization.Routes
 			if len(msgs) == 0 {
 				req := &http.Request{
 					URL: &url.URL{
 						Path: "/foo",
 					},
 				}
-				assert.True(t, routes.IsTrusted(req))
+				assert.True(t, re.Allow(req))
 				req.URL.Path = "/wrong"
-				assert.False(t, routes.IsTrusted(req))
+				assert.False(t, re.Allow(req))
 			}
 		})
 	}
@@ -218,11 +210,11 @@ func Test_validateRegexes(t *testing.T) {
 func Test_validatePreflight(t *testing.T) {
 	for _, skipped := range []bool{true, false} {
 		t.Run(fmt.Sprintf("%t", skipped), func(t *testing.T) {
-			routes := allowlist.NewRoutes()
-			opts := &options.Allowlist{
+			re := engine.NewRulesEngine(nil)
+			opts := &options.Authorization{
 				SkipAuthPreflight: skipped,
 			}
-			msgs := validatePreflight(opts, routes)
+			msgs := validatePreflight(opts, re)
 			assert.Equal(t, msgs, []string{})
 
 			optionsReq := &http.Request{
@@ -231,7 +223,7 @@ func Test_validatePreflight(t *testing.T) {
 					Path: "/any/path/works",
 				},
 			}
-			assert.Equal(t, skipped, routes.IsTrusted(optionsReq))
+			assert.Equal(t, skipped, re.Allow(optionsReq))
 
 			getReq := &http.Request{
 				Method: "GET",
@@ -239,7 +231,7 @@ func Test_validatePreflight(t *testing.T) {
 					Path: "/any/path/works",
 				},
 			}
-			assert.False(t, routes.IsTrusted(getReq))
+			assert.False(t, re.Allow(getReq))
 		})
 	}
 }
@@ -274,26 +266,25 @@ func Test_validateTrustedIPs(t *testing.T) {
 		"Invalid IPs": {
 			TrustedIPs: []string{"[::1]", "alkwlkbn/32"},
 			Expected: []string{
-				"could not parse IP network ([::1])",
-				"could not parse IP network (alkwlkbn/32)",
+				"could not parse trusted IP network(s): [::1], alkwlkbn/32",
 			},
 		},
 	}
 
 	for testName, tc := range testCases {
 		t.Run(testName, func(t *testing.T) {
-			ips := allowlist.NewIPs(nil)
-			opts := &options.Allowlist{
+			re := engine.NewRulesEngine(nil)
+			opts := &options.Authorization{
 				TrustedIPs: tc.TrustedIPs,
 			}
-			msgs := validateTrustedIPs(opts, ips)
+			msgs := validateTrustedIPs(opts, re)
 			assert.Equal(t, tc.Expected, msgs)
-			// Confirm validator populated the allowlist.IPs
+			// Confirm validator populated the authorization.IPs
 			if len(msgs) == 0 {
 				req := &http.Request{
 					RemoteAddr: fmt.Sprintf("%s:443", tc.RequestIP),
 				}
-				assert.True(t, ips.IsTrusted(req))
+				assert.True(t, re.Allow(req))
 			}
 		})
 	}

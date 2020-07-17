@@ -218,7 +218,7 @@ func Validate(o *options.Options) error {
 	}
 
 	// Do this after ReverseProxy validation so RealClientIPParser is set
-	msgs = append(msgs, validateAllowlist(o)...)
+	msgs = append(msgs, validateAuthorization(o)...)
 
 	if len(msgs) != 0 {
 		return fmt.Errorf("invalid configuration:\n  %s",
