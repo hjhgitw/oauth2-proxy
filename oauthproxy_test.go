@@ -22,6 +22,7 @@ import (
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/apis/middleware"
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/apis/options"
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/apis/sessions"
+	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/cookies"
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/logger"
 	sessionscookie "github.com/oauth2-proxy/oauth2-proxy/v7/pkg/sessions/cookie"
 	"github.com/oauth2-proxy/oauth2-proxy/v7/pkg/upstream"
@@ -703,23 +704,37 @@ func (patTest *PassAccessTokenTest) Close() {
 	patTest.providerServer.Close()
 }
 
-func (patTest *PassAccessTokenTest) getCallbackEndpoint() (httpCode int,
-	cookie string) {
+func (patTest *PassAccessTokenTest) getCallbackEndpoint() (httpCode int, cookie string) {
 	rw := httptest.NewRecorder()
 	req, err := http.NewRequest("GET", "/oauth2/callback?code=callback_code&state=nonce:",
 		strings.NewReader(""))
 	if err != nil {
 		return 0, ""
 	}
-	req.AddCookie(patTest.proxy.MakeCSRFCookie(req, "nonce", time.Hour, time.Now()))
+
+	csrf, err := cookies.NewCSRF(patTest.proxy.CookieOptions)
+	if err != nil {
+		panic(err)
+	}
+	csrf.State = "nonce"
+	val, err := csrf.EncodeCookie()
+	if err != nil {
+		panic(err)
+	}
+	req.AddCookie(&http.Cookie{
+		Name:  csrf.CookieName(),
+		Value: val,
+	})
+
 	patTest.proxy.ServeHTTP(rw, req)
+
 	return rw.Code, rw.Header().Values("Set-Cookie")[1]
 }
 
 // getEndpointWithCookie makes a requests againt the oauthproxy with passed requestPath
 // and cookie and returns body and status code.
 func (patTest *PassAccessTokenTest) getEndpointWithCookie(cookie string, endpoint string) (httpCode int, accessToken string) {
-	cookieName := patTest.proxy.CookieName
+	cookieName := patTest.proxy.CookieOptions.Name
 	var value string
 	keyPrefix := cookieName + "="
 
@@ -990,7 +1005,7 @@ func NewProcessCookieTest(opts ProcessCookieTestOpts, modifiers ...OptionsModifi
 
 	// Now, zero-out proxy.CookieRefresh for the cases that don't involve
 	// access_token validation.
-	pcTest.proxy.CookieRefresh = time.Duration(0)
+	pcTest.proxy.CookieOptions.Refresh = time.Duration(0)
 	pcTest.rw = httptest.NewRecorder()
 	pcTest.req, _ = http.NewRequest("GET", "/", strings.NewReader(""))
 	pcTest.validateUser = true
@@ -1112,7 +1127,7 @@ func TestProcessCookieFailIfRefreshSetAndCookieExpired(t *testing.T) {
 	err = pcTest.SaveSession(startSession)
 	assert.NoError(t, err)
 
-	pcTest.proxy.CookieRefresh = time.Hour
+	pcTest.proxy.CookieOptions.Refresh = time.Hour
 	session, err := pcTest.LoadCookiedSession()
 	assert.NotEqual(t, nil, err)
 	if session != nil {
@@ -2008,7 +2023,7 @@ func TestClearSplitCookie(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := OAuthProxy{CookieName: opts.Cookie.Name, CookieDomains: opts.Cookie.Domains, sessionStore: store}
+	p := OAuthProxy{CookieOptions: &opts.Cookie, sessionStore: store}
 	var rw = httptest.NewRecorder()
 	req := httptest.NewRequest("get", "/", nil)
 
@@ -2041,7 +2056,7 @@ func TestClearSingleCookie(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := OAuthProxy{CookieName: opts.Cookie.Name, CookieDomains: opts.Cookie.Domains, sessionStore: store}
+	p := OAuthProxy{CookieOptions: &opts.Cookie, sessionStore: store}
 	var rw = httptest.NewRecorder()
 	req := httptest.NewRequest("get", "/", nil)
 
