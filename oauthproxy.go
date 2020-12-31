@@ -668,7 +668,7 @@ func (p *OAuthProxy) OAuthStart(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	redirectURI := p.getOAuthRedirectURI(req)
-	loginURL := p.provider.GetLoginURL(redirectURI, fmt.Sprintf("%v:%v", csrf.State, redirect), csrf.Nonce)
+	loginURL := p.provider.GetLoginURL(redirectURI, fmt.Sprintf("%v:%v", csrf.HashState(), redirect), csrf.HashNonce())
 
 	err = csrf.SetCookie(rw, req)
 	if err != nil {
@@ -729,10 +729,10 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	nonce := state[0]
+	hashedState := state[0]
 	redirect := state[1]
 
-	if !csrf.CheckState(nonce) {
+	if !csrf.CheckState(hashedState) {
 		logger.PrintAuthf(session.Email, req, logger.AuthFailure, "Invalid authentication via OAuth2: CSRF token mismatch, potential attack")
 		p.ErrorPage(rw, http.StatusForbidden, "Permission Denied", "CSRF Failed")
 		return
