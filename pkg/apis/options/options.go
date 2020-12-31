@@ -85,6 +85,7 @@ type Options struct {
 	OIDCIssuerURL                      string   `flag:"oidc-issuer-url" cfg:"oidc_issuer_url"`
 	InsecureOIDCAllowUnverifiedEmail   bool     `flag:"insecure-oidc-allow-unverified-email" cfg:"insecure_oidc_allow_unverified_email"`
 	InsecureOIDCSkipIssuerVerification bool     `flag:"insecure-oidc-skip-issuer-verification" cfg:"insecure_oidc_skip_issuer_verification"`
+	InsecureOIDCSkipNonce              bool     `flag:"insecure-oidc-skip-nonce" cfg:"insecure_oidc_skip_nonce"`
 	SkipOIDCDiscovery                  bool     `flag:"skip-oidc-discovery" cfg:"skip_oidc_discovery"`
 	OIDCJwksURL                        string   `flag:"oidc-jwks-url" cfg:"oidc_jwks_url"`
 	OIDCEmailClaim                     string   `flag:"oidc-email-claim" cfg:"oidc_email_claim"`
@@ -150,6 +151,7 @@ func NewOptions() *Options {
 		Prompt:                           "", // Change to "login" when ApprovalPrompt officially deprecated
 		ApprovalPrompt:                   "force",
 		InsecureOIDCAllowUnverifiedEmail: false,
+		InsecureOIDCSkipNonce:            true,
 		SkipOIDCDiscovery:                false,
 		Logging:                          loggingDefaults(),
 		UserIDClaim:                      providers.OIDCEmailClaim, // Deprecated: Use OIDCEmailClaim
@@ -226,6 +228,7 @@ func NewFlagSet() *pflag.FlagSet {
 	flagSet.String("oidc-issuer-url", "", "OpenID Connect issuer URL (ie: https://accounts.google.com)")
 	flagSet.Bool("insecure-oidc-allow-unverified-email", false, "Don't fail if an email address in an id_token is not verified")
 	flagSet.Bool("insecure-oidc-skip-issuer-verification", false, "Do not verify if issuer matches OIDC discovery URL")
+	flagSet.Bool("insecure-oidc-skip-nonce", true, "skip verifying the OIDC ID Token's nonce claim")
 	flagSet.Bool("skip-oidc-discovery", false, "Skip OIDC discovery and use manually supplied Endpoints")
 	flagSet.String("oidc-jwks-url", "", "OpenID Connect JWKS URL (ie: https://www.googleapis.com/oauth2/v3/certs)")
 	flagSet.String("oidc-groups-claim", providers.OIDCGroupsClaim, "which OIDC claim contains the user groups")

@@ -286,6 +286,7 @@ func parseProviderInfo(o *options.Options, msgs []string) []string {
 		p.SetTeam(o.BitbucketTeam)
 		p.SetRepository(o.BitbucketRepository)
 	case *providers.OIDCProvider:
+		p.SkipNonce = o.InsecureOIDCSkipNonce
 		if p.Verifier == nil {
 			msgs = append(msgs, "oidc provider requires an oidc issuer URL")
 		}

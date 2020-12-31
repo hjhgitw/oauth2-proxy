@@ -4,12 +4,16 @@
 
 ## Important Notes
 
+- [#967](https://github.com/oauth2-proxy/oauth2-proxy/pull/967) `--insecure-oidc-skip-nonce` is currently `true` by default in case
+  any existing OIDC Identity Providers don't support it. The default will switch to `false` in a future version.
+
 ## Breaking Changes
 
 ## Changes since v7.0.0
 
 - [#1020](https://github.com/oauth2-proxy/oauth2-proxy/pull/1020) Flatten array-based response headers (@NickMeves)
 - [#1026](https://github.com/oauth2-proxy/oauth2-proxy/pull/1026) Ensure config flags get parsed correctly when other flags preceed them (@JoelSpeed)
+- [#967](https://github.com/oauth2-proxy/oauth2-proxy/pull/967) Set & verify a nonce with OIDC providers (@NickMeves)
 
 # V7.0.0
 
