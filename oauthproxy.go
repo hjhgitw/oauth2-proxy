@@ -674,7 +674,7 @@ func (p *OAuthProxy) OAuthStart(rw http.ResponseWriter, req *http.Request) {
 		csrf.HashOIDCNonce(),
 	)
 
-	if err := csrf.SetCookie(rw, req); err != nil {
+	if _, err := csrf.SetCookie(rw, req); err != nil {
 		logger.Errorf("Error setting CSRF cookie: %v", err)
 		p.ErrorPage(rw, http.StatusInternalServerError, "Internal Server Error", "Internal Error")
 		return
@@ -738,7 +738,7 @@ func (p *OAuthProxy) OAuthCallback(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	session.Nonce = csrf.OIDCNonce
+	csrf.SetSessionNonce(session)
 	p.provider.ValidateSession(req.Context(), session)
 
 	if !p.IsValidRedirect(appRedirect) {
@@ -1127,7 +1127,7 @@ func extractAllowedGroups(req *http.Request) map[string]struct{} {
 
 // encodedState builds the OAuth state param out of our nonce and
 // original application redirect
-func encodeState(csrf *cookies.CSRF, redirect string) string {
+func encodeState(csrf cookies.CSRF, redirect string) string {
 	return fmt.Sprintf("%v:%v", csrf.HashOAuthState(), redirect)
 }
 
